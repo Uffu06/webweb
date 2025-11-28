@@ -16,6 +16,8 @@ import {
 type TaskStatus = 'open' | 'done'
 type CardColor = 'blue' | 'orange' | 'red' | 'green'
 type Section = 'manage' | 'new' | 'settings'
+type AssignMode = 'child' | 'open' | 'collab'
+type CollabMode = 'dateText' | 'weekdays' | 'weekdaysText'
 
 interface ProposedChange {
     proposedById: string
@@ -36,7 +38,7 @@ interface Task {
     dueDate?: Date | null
     createdAt?: Date | null
     requiresInput?: boolean
-    inputType?: 'text' | 'text+date'
+    inputType?: 'text' | 'text+date' | 'weekdays' | 'weekdays+text'
     proposedChange?: ProposedChange | null
 }
 
@@ -44,6 +46,16 @@ interface FamilyMember {
     uid: string
     displayName: string
     role: 'parent' | 'child'
+}
+
+interface TaskSubmission {
+    id: string
+    taskId: string
+    userId: string
+    userName?: string | null
+    note?: string | null
+    date?: Date | null
+    weekdays?: number[] | null
 }
 
 interface ParentDashboardProps {
@@ -55,8 +67,6 @@ interface ParentDashboardProps {
     members: FamilyMember[]
     onLogout: () => void
 }
-
-type AssignMode = 'child' | 'open' | 'collab'
 
 function getCardColor(task: Task): CardColor {
     if (task.status === 'done') return 'green'
@@ -90,6 +100,17 @@ function formatDateTime(d?: Date | null) {
     return `${date} • ${time}`
 }
 
+function weekdayLabel(n: number) {
+    if (n === 1) return 'Mo'
+    if (n === 2) return 'Di'
+    if (n === 3) return 'Mi'
+    if (n === 4) return 'Do'
+    if (n === 5) return 'Fr'
+    if (n === 6) return 'Sa'
+    if (n === 7) return 'So'
+    return ''
+}
+
 export default function ParentDashboard({
     userId,
     userName,
@@ -100,6 +121,7 @@ export default function ParentDashboard({
     onLogout
 }: ParentDashboardProps) {
     const [tasks, setTasks] = useState<Task[]>([])
+    const [submissions, setSubmissions] = useState<TaskSubmission[]>([])
     const [section, setSection] = useState<Section>('manage')
     const [error, setError] = useState<string | null>(null)
 
@@ -109,8 +131,7 @@ export default function ParentDashboard({
     const [dueTime, setDueTime] = useState('')
     const [assignMode, setAssignMode] = useState<AssignMode>('child')
     const [assigneeId, setAssigneeId] = useState('')
-    const [collabNeedsText, setCollabNeedsText] = useState(true)
-    const [collabNeedsDate, setCollabNeedsDate] = useState(true)
+    const [collabMode, setCollabMode] = useState<CollabMode>('dateText')
     const [creating, setCreating] = useState(false)
 
     const [statusFilter, setStatusFilter] = useState<'open' | 'done' | 'all'>(
@@ -181,6 +202,35 @@ export default function ParentDashboard({
         return () => unsub()
     }, [familyId])
 
+    useEffect(() => {
+        const submissionsRef = collection(db, 'taskSubmissions')
+        const q = query(submissionsRef, where('familyId', '==', familyId))
+
+        const unsub = onSnapshot(q, snapshot => {
+            const list: TaskSubmission[] = snapshot.docs.map(docSnap => {
+                const data = docSnap.data() as any
+                const date =
+                    data.date && data.date.toDate ? data.date.toDate() : null
+                const weekdays =
+                    data.weekdays && Array.isArray(data.weekdays)
+                        ? (data.weekdays as number[])
+                        : null
+                return {
+                    id: docSnap.id,
+                    taskId: data.taskId,
+                    userId: data.userId,
+                    userName: data.userName ?? null,
+                    note: data.note ?? null,
+                    date,
+                    weekdays
+                }
+            })
+            setSubmissions(list)
+        })
+
+        return () => unsub()
+    }, [familyId])
+
     const childrenMembers = useMemo(
         () => members.filter(m => m.role === 'child'),
         [members]
@@ -211,6 +261,9 @@ export default function ParentDashboard({
         return map
     }, [childrenMembers, tasks])
 
+    const getSubmissionsForTask = (taskId: string) =>
+        submissions.filter(s => s.taskId === taskId)
+
     const handleCreateTask = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         if (!title.trim()) {
@@ -239,7 +292,7 @@ export default function ParentDashboard({
             let assignId: string | null = null
             let assignName: string | null = null
             let requiresInput = false
-            let inputType: 'text' | 'text+date' | undefined
+            let inputType: Task['inputType']
 
             if (assignMode === 'open') {
                 isOpen = true
@@ -250,9 +303,9 @@ export default function ParentDashboard({
             } else if (assignMode === 'collab') {
                 isOpen = true
                 requiresInput = true
-                if (collabNeedsText && collabNeedsDate) inputType = 'text+date'
-                else if (collabNeedsText) inputType = 'text'
-                else if (collabNeedsDate) inputType = 'text+date'
+                if (collabMode === 'dateText') inputType = 'text+date'
+                if (collabMode === 'weekdays') inputType = 'weekdays'
+                if (collabMode === 'weekdaysText') inputType = 'weekdays+text'
             }
 
             const tasksRef = collection(db, 'tasks')
@@ -277,8 +330,7 @@ export default function ParentDashboard({
             setDueTime('')
             setAssignMode('child')
             setAssigneeId('')
-            setCollabNeedsText(true)
-            setCollabNeedsDate(true)
+            setCollabMode('dateText')
             setSection('manage')
         } catch (err) {
             const message =
@@ -356,7 +408,7 @@ export default function ParentDashboard({
             await navigator.clipboard.writeText(inviteCode)
             setCopied(true)
             setTimeout(() => setCopied(false), 1500)
-        } catch (err) {
+        } catch {
             setError('Konnte Code nicht kopieren.')
         }
     }
@@ -395,6 +447,86 @@ export default function ParentDashboard({
         } finally {
             setLeavingFamily(false)
         }
+    }
+
+    const renderSubmissionsSummary = (task: Task) => {
+        const list = getSubmissionsForTask(task.id)
+        if (!list.length) return null
+
+        if (
+            task.inputType === 'weekdays' ||
+            task.inputType === 'weekdays+text'
+        ) {
+            const days = [1, 2, 3, 4, 5, 6, 7]
+            return (
+                <div className="mt-2 rounded-2xl bg-black/15 p-2 text-[11px]">
+                    <div className="mb-1 font-semibold">
+                        Wochenübersicht
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
+                        {days.map(day => {
+                            const people = list.filter(
+                                s => s.weekdays && s.weekdays.includes(day)
+                            )
+                            const count = people.length
+                            const names = people
+                                .map(p => p.userName || 'Familie')
+                                .join(', ')
+                            const hasPeople = count > 0
+                            return (
+                                <div
+                                    key={day}
+                                    className={`rounded-xl px-2 py-1 ${hasPeople
+                                        ? 'bg-zinc-900 text-zinc-50'
+                                        : 'bg-zinc-200 text-zinc-500'
+                                        }`}
+                                >
+                                    <div className="text-[11px] font-semibold">
+                                        {weekdayLabel(day)} ({count})
+                                    </div>
+                                    {hasPeople && (
+                                        <div className="mt-0.5 text-[10px] leading-snug">
+                                            {names}
+                                        </div>
+                                    )}
+                                </div>
+                            )
+                        })}
+                    </div>
+                </div>
+            )
+        }
+
+        // text(+date)-Tasks -> Liste pro Person
+        return (
+            <div className="mt-2 rounded-2xl bg-black/15 p-2 text-[11px]">
+                <div className="mb-1 font-semibold">
+                    Einträge
+                </div>
+                <div className="space-y-1">
+                    {list.map(s => (
+                        <div
+                            key={s.id}
+                            className="rounded-xl bg-black/10 px-2 py-1"
+                        >
+                            <div className="font-semibold">
+                                {s.userName || 'Familienmitglied'}
+                            </div>
+                            {s.date && (
+                                <div className="text-[10px]">
+                                    {s.date.toLocaleDateString()}
+                                </div>
+                            )}
+                            {s.note && (
+                                <div className="text-[10px] text-zinc-100">
+                                    {s.note}
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )
     }
 
     const renderManageSection = () => (
@@ -509,7 +641,7 @@ export default function ParentDashboard({
                                         {formatDateTime(task.dueDate)}
                                     </div>
                                     <div className="mt-1 text-xs">
-                                        {task.isOpen && !task.assigneeId && 'Offen für alle'}
+                                        {task.isOpen && !task.assigneeId && 'Alle'}
                                         {!task.isOpen && task.assigneeName && (
                                             <>Zugewiesen an {task.assigneeName}</>
                                         )}
@@ -564,6 +696,8 @@ export default function ParentDashboard({
                                     </div>
                                 </div>
                             )}
+
+                            {task.requiresInput && renderSubmissionsSummary(task)}
                         </div>
                     )
                 })}
@@ -586,7 +720,7 @@ export default function ParentDashboard({
                         value={title}
                         onChange={e => setTitle(e.target.value)}
                         className="w-full rounded-xl border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm outline-none focus:border-zinc-300"
-                        placeholder="z.B. Zimmer putzen"
+                        placeholder="z.B. Zimmer putzen oder Kochplan"
                         required
                     />
                 </div>
@@ -651,7 +785,7 @@ export default function ParentDashboard({
                                 : 'bg-zinc-700 text-zinc-100'
                                 }`}
                         >
-                            Offen für alle
+                            Alle
                         </button>
                         <button
                             type="button"
@@ -683,27 +817,39 @@ export default function ParentDashboard({
                     {assignMode === 'collab' && (
                         <div className="mt-2 space-y-2 rounded-xl bg-zinc-900 px-3 py-3 text-xs">
                             <div className="font-medium">
-                                Was sollen Kinder eingeben?
+                                Wie sollen Kinder eintragen?
                             </div>
-                            <label className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    checked={collabNeedsText}
-                                    onChange={e => setCollabNeedsText(e.target.checked)}
-                                />
-                                <span>Text / Beschreibung (z.B. Gericht)</span>
-                            </label>
-                            <label className="flex items-center gap-2">
-                                <input
-                                    type="checkbox"
-                                    checked={collabNeedsDate}
-                                    onChange={e => setCollabNeedsDate(e.target.checked)}
-                                />
-                                <span>Datum (z.B. Tag an dem gekocht wird)</span>
-                            </label>
+                            <div className="flex flex-col gap-2">
+                                <label className="flex items-center gap-2">
+                                    <input
+                                        type="radio"
+                                        checked={collabMode === 'dateText'}
+                                        onChange={() => setCollabMode('dateText')}
+                                    />
+                                    <span>Datum + Text (z.B. &quot;Montag – Spaghetti&quot;)</span>
+                                </label>
+                                <label className="flex items-center gap-2">
+                                    <input
+                                        type="radio"
+                                        checked={collabMode === 'weekdays'}
+                                        onChange={() => setCollabMode('weekdays')}
+                                    />
+                                    <span>Wochentage (Mo–So) auswählen</span>
+                                </label>
+                                <label className="flex items-center gap-2">
+                                    <input
+                                        type="radio"
+                                        checked={collabMode === 'weekdaysText'}
+                                        onChange={() => setCollabMode('weekdaysText')}
+                                    />
+                                    <span>Wochentage + Text (z.B. wer an welchem Tag kocht)</span>
+                                </label>
+                            </div>
                             <div className="text-[11px] text-zinc-300">
-                                Kinder sehen dann Eingabe-Felder und können erst
-                                abschließen, wenn alles ausgefüllt ist.
+                                Für Dinge wie Kochplan oder „wer nimmt Essen mit“ ist
+                                &quot;Wochentage&quot; oder &quot;Wochentage + Text&quot;
+                                ideal. Kinder wählen einmal ihre Tage – der Plan gilt dann
+                                jede Woche, bis ihr ihn anpasst.
                             </div>
                         </div>
                     )}
@@ -830,7 +976,7 @@ export default function ParentDashboard({
                     ))}
                 </div>
             </div>
-            
+
             <button
                 type="button"
                 onClick={onLogout}
@@ -870,7 +1016,6 @@ export default function ParentDashboard({
                 </div>
             </div>
 
-            {/* Overview jetzt direkt unter dem Header */}
             {renderOverview()}
 
             <div className="mt-4 flex flex-col gap-3">
