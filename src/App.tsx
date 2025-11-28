@@ -19,7 +19,8 @@ import {
   where
 } from 'firebase/firestore'
 import FamilySetup from './FamilySetup'
-import TaskDashboard from './TaskDashboard'
+import ChildDashboard from './ChildDashboard'
+import ParentDashboard from './ParentDashboard'
 
 type AuthMode = 'login' | 'register'
 
@@ -174,9 +175,9 @@ export default function App() {
 
   if (authLoading || profileLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100">
-        <div className="rounded-xl bg-white px-6 py-4 text-lg shadow-md">
-          Lädt
+      <div className="flex min-h-screen items-center justify-center bg-zinc-900 text-white">
+        <div className="rounded-xl bg-zinc-800 px-6 py-4 text-lg shadow-md">
+          Lädt...
         </div>
       </div>
     )
@@ -184,32 +185,33 @@ export default function App() {
 
   if (!currentUser) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100">
-        <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-          <h1 className="mb-4 text-2xl font-semibold text-slate-900">
-            WebWeb – Login
+      <div className="flex min-h-screen items-center justify-center bg-zinc-900 text-white">
+        <div className="w-full max-w-sm rounded-2xl bg-zinc-800 p-6 shadow-xl">
+          <h1 className="mb-4 text-center text-2xl font-semibold">
+            WEBWEB
           </h1>
+          <h2 className="mb-4 text-center text-lg font-medium">
+            Login
+          </h2>
 
           <div className="mb-4 flex gap-2">
             <button
               type="button"
               onClick={() => setMode('login')}
-              className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
-                mode === 'login'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-700'
-              }`}
+              className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${mode === 'login'
+                  ? 'bg-white text-zinc-900'
+                  : 'bg-zinc-700 text-zinc-200'
+                }`}
             >
               Login
             </button>
             <button
               type="button"
               onClick={() => setMode('register')}
-              className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${
-                mode === 'register'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-700'
-              }`}
+              className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${mode === 'register'
+                  ? 'bg-white text-zinc-900'
+                  : 'bg-zinc-700 text-zinc-200'
+                }`}
             >
               Registrieren
             </button>
@@ -221,54 +223,54 @@ export default function App() {
           >
             {mode === 'register' && (
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
+                <label className="mb-1 block text-xs font-medium text-zinc-200">
                   Name
                 </label>
                 <input
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                  className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-300"
                   required
                 />
               </div>
             )}
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-zinc-200">
                 E-Mail
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-300"
                 required
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">
+              <label className="mb-1 block text-xs font-medium text-zinc-200">
                 Passwort
               </label>
               <input
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-300"
                 required
               />
             </div>
 
             {error && (
-              <p className="text-sm text-red-600">
+              <p className="text-xs text-red-400">
                 {error}
               </p>
             )}
 
             <button
               type="submit"
-              className="mt-2 w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              className="mt-2 w-full rounded-md bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
             >
               {mode === 'login' ? 'Einloggen' : 'Account erstellen'}
             </button>
@@ -282,51 +284,39 @@ export default function App() {
     return <FamilySetup user={profile} />
   }
 
+  if (currentUser && !profile) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-900 text-white">
+        <div className="rounded-xl bg-zinc-800 px-6 py-4 text-lg shadow-md">
+          Profil wird geladen...
+        </div>
+      </div>
+    )
+  }
+
   const displayName = profile?.displayName || profile?.email || 'Unbekannt'
   const userRole: 'parent' | 'child' =
     profile?.role === 'parent' ? 'parent' : 'child'
 
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="mx-auto max-w-5xl p-4">
-        <div className="mb-4 flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-md md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">
-              WebWeb – Dashboard
-            </h1>
-            <p className="mt-1 text-sm text-slate-700">
-              Eingeloggt als{' '}
-              <span className="font-medium">
-                {displayName}
-              </span>
-            </p>
-            <p className="mt-1 text-xs text-slate-600">
-              Rolle{' '}
-              {profile?.role === 'parent' ? 'Elternteil' : 'Kind'} in{' '}
-              {family?.name || 'unbekannter Familie'}
-            </p>
-            <p className="mt-1 text-xs text-slate-600">
-              Einladungs-Code{' '}
-              <span className="font-mono">
-                {family?.inviteCode || 'nicht verfügbar'}
-              </span>
-            </p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="self-start rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            Logout
-          </button>
-        </div>
-
-        {profile?.familyId && (
-          <TaskDashboard
-            familyId={profile.familyId as string}
-            userId={profile.uid}
+    <div className="flex min-h-screen items-center justify-center bg-zinc-900 text-white">
+      <div className="w-full max-w-xs sm:max-w-sm">
+        {userRole === 'child' ? (
+          <ChildDashboard
+            userId={profile!.uid}
             userName={displayName}
-            userRole={userRole}
+            familyId={profile!.familyId as string}
+            onLogout={handleLogout}
+          />
+        ) : (
+          <ParentDashboard
+            userId={profile!.uid}
+            userName={displayName}
+            familyId={profile!.familyId as string}
+            inviteCode={family?.inviteCode || ''}
+            familyName={family?.name || 'Familie'}
             members={familyMembers}
+            onLogout={handleLogout}
           />
         )}
       </div>
