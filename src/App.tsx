@@ -185,12 +185,12 @@ export default function App() {
 
   if (!currentUser) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-900 text-white">
-        <div className="w-full max-w-sm rounded-2xl bg-zinc-800 p-6 shadow-xl">
-          <h1 className="mb-4 text-center text-2xl font-semibold">
+      <div className="flex min-h-screen items-center justify-center bg-zinc-900 text-white px-4">
+        <div className="w-full max-w-sm rounded-[32px] bg-zinc-800 p-6 shadow-2xl">
+          <h1 className="mb-2 text-center text-sm font-bold tracking-[0.25em]">
             WEBWEB
           </h1>
-          <h2 className="mb-4 text-center text-lg font-medium">
+          <h2 className="mb-4 text-center text-xl font-semibold">
             Login
           </h2>
 
@@ -198,9 +198,9 @@ export default function App() {
             <button
               type="button"
               onClick={() => setMode('login')}
-              className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${mode === 'login'
-                  ? 'bg-white text-zinc-900'
-                  : 'bg-zinc-700 text-zinc-200'
+              className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium ${mode === 'login'
+                ? 'bg-white text-zinc-900'
+                : 'bg-zinc-700 text-zinc-200'
                 }`}
             >
               Login
@@ -208,9 +208,9 @@ export default function App() {
             <button
               type="button"
               onClick={() => setMode('register')}
-              className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${mode === 'register'
-                  ? 'bg-white text-zinc-900'
-                  : 'bg-zinc-700 text-zinc-200'
+              className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium ${mode === 'register'
+                ? 'bg-white text-zinc-900'
+                : 'bg-zinc-700 text-zinc-200'
                 }`}
             >
               Registrieren
@@ -219,7 +219,7 @@ export default function App() {
 
           <form
             onSubmit={mode === 'login' ? handleLogin : handleRegister}
-            className="space-y-3"
+            className="space-y-3 text-sm"
           >
             {mode === 'register' && (
               <div>
@@ -230,7 +230,7 @@ export default function App() {
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-300"
+                  className="w-full rounded-xl border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-300"
                   required
                 />
               </div>
@@ -244,7 +244,7 @@ export default function App() {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-300"
+                className="w-full rounded-xl border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-300"
                 required
               />
             </div>
@@ -257,7 +257,7 @@ export default function App() {
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full rounded-md border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-300"
+                className="w-full rounded-xl border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-zinc-300"
                 required
               />
             </div>
@@ -270,7 +270,7 @@ export default function App() {
 
             <button
               type="submit"
-              className="mt-2 w-full rounded-md bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
+              className="mt-2 w-full rounded-xl bg-white px-4 py-2 text-sm font-semibold text-zinc-900 hover:bg-zinc-100"
             >
               {mode === 'login' ? 'Einloggen' : 'Account erstellen'}
             </button>
@@ -299,13 +299,14 @@ export default function App() {
     profile?.role === 'parent' ? 'parent' : 'child'
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-900 text-white">
-      <div className="w-full max-w-xs sm:max-w-sm">
+    <div className="flex min-h-screen items-center justify-center bg-zinc-900 text-white px-4">
+      <div className="w-full max-w-sm sm:max-w-md">
         {userRole === 'child' ? (
           <ChildDashboard
             userId={profile!.uid}
             userName={displayName}
             familyId={profile!.familyId as string}
+            familyName={family?.name || 'Familie'}
             onLogout={handleLogout}
           />
         ) : (
@@ -319,6 +320,7 @@ export default function App() {
             onLogout={handleLogout}
           />
         )}
+
       </div>
     </div>
   )
