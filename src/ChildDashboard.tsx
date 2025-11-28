@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { db } from './firebase'
 import {
+    addDoc,
     collection,
     doc,
     onSnapshot,
@@ -9,8 +10,7 @@ import {
     serverTimestamp,
     Timestamp,
     updateDoc,
-    where,
-    addDoc
+    where
 } from 'firebase/firestore'
 
 type TaskStatus = 'open' | 'done'
@@ -28,6 +28,12 @@ interface Task {
     createdAt?: Date | null
     requiresInput?: boolean
     inputType?: 'text' | 'text+date'
+    proposedChange?: {
+        proposedById: string
+        proposedByName?: string
+        newDueDate?: Date | null
+        status?: 'pending' | 'accepted' | 'rejected'
+    } | null
 }
 
 interface TaskSubmission {
@@ -42,6 +48,7 @@ interface ChildDashboardProps {
     userId: string
     userName: string
     familyId: string
+    familyName: string
     onLogout: () => void
 }
 
@@ -50,7 +57,7 @@ type CardColor = 'blue' | 'orange' | 'red' | 'green'
 function getCardColor(task: Task): CardColor {
     if (task.status === 'done') return 'green'
     if (!task.dueDate) return 'blue'
-    const now = new Date().getTime()
+    const now = Date.now()
     const diffMs = task.dueDate.getTime() - now
     const oneDayMs = 24 * 60 * 60 * 1000
     if (diffMs < 0) return 'red'
@@ -69,6 +76,7 @@ export default function ChildDashboard({
     userId,
     userName,
     familyId,
+    familyName,
     onLogout
 }: ChildDashboardProps) {
     const [tasks, setTasks] = useState<Task[]>([])
@@ -81,7 +89,6 @@ export default function ChildDashboard({
     const [savingInputTaskId, setSavingInputTaskId] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
-    const [leavingFamily, setLeavingFamily] = useState(false)
 
     useEffect(() => {
         const tasksRef = collection(db, 'tasks')
@@ -95,6 +102,21 @@ export default function ChildDashboard({
                 const created =
                     data.createdAt && data.createdAt.toDate ? data.createdAt.toDate() : null
 
+                let proposed: Task['proposedChange'] = null
+                if (data.proposedChange) {
+                    const pc = data.proposedChange
+                    const newDue =
+                        pc.newDueDate && pc.newDueDate.toDate
+                            ? pc.newDueDate.toDate()
+                            : null
+                    proposed = {
+                        proposedById: pc.proposedById,
+                        proposedByName: pc.proposedByName,
+                        newDueDate: newDue,
+                        status: pc.status
+                    }
+                }
+
                 return {
                     id: docSnap.id,
                     familyId: data.familyId,
@@ -107,7 +129,8 @@ export default function ChildDashboard({
                     dueDate: due,
                     createdAt: created,
                     requiresInput: data.requiresInput ?? false,
-                    inputType: data.inputType ?? undefined
+                    inputType: data.inputType ?? undefined,
+                    proposedChange: proposed
                 }
             })
 
@@ -180,9 +203,7 @@ export default function ChildDashboard({
         const existing = getSubmissionForTask(taskId)
         setInputNote(existing?.note ?? '')
         setInputDate(
-            existing?.date
-                ? existing.date.toISOString().slice(0, 10)
-                : ''
+            existing?.date ? existing.date.toISOString().slice(0, 10) : ''
         )
     }
 
@@ -278,24 +299,6 @@ export default function ChildDashboard({
         }
     }
 
-    const handleLeaveFamily = async () => {
-        setError(null)
-        setLeavingFamily(true)
-        try {
-            const ref = doc(db, 'users', userId)
-            await updateDoc(ref, {
-                familyId: null,
-                role: null
-            })
-        } catch (err) {
-            const message =
-                err instanceof Error ? err.message : 'Fehler beim Verlassen der Familie'
-            setError(message)
-        } finally {
-            setLeavingFamily(false)
-        }
-    }
-
     const renderTaskCard = (task: Task, isDoneSection: boolean) => {
         const color = getCardColor(task)
         const colorClasses = getColorClasses(color)
@@ -310,15 +313,15 @@ export default function ChildDashboard({
         return (
             <div
                 key={task.id}
-                className={`mb-3 rounded-2xl px-3 py-2 shadow-md ${colorClasses}`}
+                className={`mb-4 rounded-3xl px-4 py-3 text-sm shadow-md ${colorClasses}`}
             >
-                <div className="flex items-center justify-between">
-                    <div>
-                        <div className="text-xs font-semibold uppercase tracking-wide">
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex-1">
+                        <div className="text-base font-semibold uppercase tracking-wide">
                             {task.title}
                         </div>
                         {task.dueDate && (
-                            <div className="text-[10px] leading-tight">
+                            <div className="mt-1 text-xs leading-snug">
                                 {task.dueDate.toLocaleDateString()}
                                 <br />
                                 {task.dueDate.toLocaleTimeString([], {
@@ -328,12 +331,12 @@ export default function ChildDashboard({
                             </div>
                         )}
                     </div>
-                    <div className="flex flex-col items-end gap-1 text-lg">
+                    <div className="flex flex-col items-end gap-2">
                         {task.status === 'open' && (
                             <button
                                 type="button"
                                 onClick={() => handleOpenProposal(task.id)}
-                                className="leading-none"
+                                className="flex h-12 w-12 items-center justify-center rounded-full bg-black/5 text-2xl"
                                 title="Anderes Datum vorschlagen"
                             >
                                 🙏
@@ -343,16 +346,16 @@ export default function ChildDashboard({
                             <button
                                 type="button"
                                 onClick={() => handleMarkDone(task)}
-                                className="leading-none"
+                                className="flex h-12 w-12 items-center justify-center rounded-full bg-black/5 text-2xl"
                                 title="Aufgabe erledigt"
                             >
                                 👍
                             </button>
                         )}
                         {task.status === 'done' && isDoneSection && (
-                            <span className="text-base" title="Erledigt">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/5 text-2xl">
                                 👍
-                            </span>
+                            </div>
                         )}
                     </div>
                 </div>
@@ -360,33 +363,33 @@ export default function ChildDashboard({
                 {proposalTaskId === task.id && task.status === 'open' && (
                     <form
                         onSubmit={e => handleSendProposal(task, e)}
-                        className="mt-2 rounded-md bg-white/70 p-2 text-[10px]"
+                        className="mt-3 rounded-2xl bg-white/80 p-3 text-sm text-zinc-900"
                     >
-                        <div className="mb-1 font-semibold text-zinc-800">
+                        <div className="mb-2 text-sm font-semibold">
                             Neues Datum vorschlagen
                         </div>
                         <input
                             type="date"
                             value={proposalDate}
                             onChange={e => setProposalDate(e.target.value)}
-                            className="mb-1 w-full rounded-md border border-zinc-400 px-2 py-1 text-[10px] text-zinc-900 outline-none"
+                            className="mb-2 w-full rounded-xl border border-zinc-400 px-3 py-2 text-sm outline-none"
                             required
                         />
                         <button
                             type="submit"
-                            className="w-full rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-semibold text-white"
+                            className="flex h-11 w-full items-center justify-center rounded-xl bg-zinc-900 text-sm font-semibold text-white"
                         >
-                            Vorschlagen
+                            Vorschlag senden
                         </button>
                     </form>
                 )}
 
                 {task.requiresInput && task.inputType && (
-                    <div className="mt-2">
+                    <div className="mt-3">
                         <button
                             type="button"
                             onClick={() => handleToggleExpand(task.id)}
-                            className="w-full rounded-md bg-black/15 px-2 py-1 text-[10px] font-semibold"
+                            className="flex h-11 w-full items-center justify-center rounded-xl bg-black/15 px-3 text-sm font-semibold"
                         >
                             {expandedTaskId === task.id
                                 ? 'Eingaben ausblenden'
@@ -396,48 +399,48 @@ export default function ChildDashboard({
                         {showInputArea && (
                             <form
                                 onSubmit={e => handleSaveInput(task, e)}
-                                className="mt-2 rounded-md bg-white/80 p-2 text-[10px] text-zinc-900"
+                                className="mt-3 rounded-2xl bg-white/85 p-3 text-sm text-zinc-900"
                             >
-                                {task.inputType === 'text' ||
-                                    task.inputType === 'text+date' ? (
-                                    <div className="mb-2">
-                                        <div className="mb-1 font-semibold">
-                                            Beschreibung / Gericht
+                                {(task.inputType === 'text' ||
+                                    task.inputType === 'text+date') && (
+                                        <div className="mb-3">
+                                            <div className="mb-1 text-sm font-semibold">
+                                                Beschreibung / Gericht
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={inputNote}
+                                                onChange={e => setInputNote(e.target.value)}
+                                                className="w-full rounded-xl border border-zinc-400 px-3 py-2 text-sm outline-none"
+                                                placeholder="z.B. Hörnli mit Hackfleisch"
+                                            />
                                         </div>
-                                        <input
-                                            type="text"
-                                            value={inputNote}
-                                            onChange={e => setInputNote(e.target.value)}
-                                            className="w-full rounded-md border border-zinc-400 px-2 py-1 text-[10px] outline-none"
-                                            placeholder="z.B. Hörnli mit Hackfleisch"
-                                        />
-                                    </div>
-                                ) : null}
+                                    )}
 
                                 {task.inputType === 'text+date' && (
-                                    <div className="mb-2">
-                                        <div className="mb-1 font-semibold">Datum wählen</div>
+                                    <div className="mb-3">
+                                        <div className="mb-1 text-sm font-semibold">
+                                            Datum wählen
+                                        </div>
                                         <input
                                             type="date"
                                             value={inputDate}
                                             onChange={e => setInputDate(e.target.value)}
-                                            className="w-full rounded-md border border-zinc-400 px-2 py-1 text-[10px] outline-none"
+                                            className="w-full rounded-xl border border-zinc-400 px-3 py-2 text-sm outline-none"
                                         />
                                     </div>
                                 )}
 
                                 {mySubmission && (
-                                    <div className="mb-2 rounded-md bg-zinc-100 p-2 text-[10px]">
-                                        <div className="font-semibold text-zinc-800">
+                                    <div className="mb-3 rounded-xl bg-zinc-100 p-3 text-xs text-zinc-800">
+                                        <div className="mb-1 font-semibold">
                                             Deine aktuelle Eingabe:
                                         </div>
                                         {mySubmission.note && (
-                                            <div className="text-zinc-700">
-                                                {mySubmission.note}
-                                            </div>
+                                            <div>{mySubmission.note}</div>
                                         )}
                                         {mySubmission.date && (
-                                            <div className="text-zinc-700">
+                                            <div>
                                                 {mySubmission.date.toLocaleDateString()}
                                             </div>
                                         )}
@@ -447,7 +450,7 @@ export default function ChildDashboard({
                                 <button
                                     type="submit"
                                     disabled={savingInputTaskId === task.id}
-                                    className="w-full rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-60"
+                                    className="flex h-11 w-full items-center justify-center rounded-xl bg-zinc-900 text-sm font-semibold text-white disabled:opacity-60"
                                 >
                                     {savingInputTaskId === task.id
                                         ? 'Speichere...'
@@ -462,30 +465,31 @@ export default function ChildDashboard({
     }
 
     return (
-        <div className="rounded-[32px] bg-zinc-800 px-4 py-5 text-white shadow-2xl">
-            <div className="mb-4 text-center">
-                <div className="text-sm font-bold tracking-[0.2em]">
+        <div className="rounded-[36px] bg-zinc-800 px-5 py-6 text-white shadow-2xl">
+            <div className="mb-5 text-center">
+                <div className="text-base font-bold tracking-[0.25em]">
                     WEBWEB
                 </div>
-                <div className="mt-1 text-lg font-semibold">
-                    Hello Kind
+                <div className="mt-2 text-2xl font-semibold">
+                    Hallo {userName}
                 </div>
-                <div className="text-[11px] text-zinc-300">
-                    {userName}
+                <div className="mt-1 text-sm text-zinc-300">
+                    {familyName}
                 </div>
             </div>
 
+
             <div className="mb-4 border-t border-zinc-700" />
 
-            <div className="max-h-[60vh] overflow-y-auto pb-2">
+            <div className="max-h-[55vh] overflow-y-auto pb-2 pr-1">
                 {loading && (
-                    <div className="py-4 text-center text-xs text-zinc-300">
+                    <div className="py-4 text-center text-sm text-zinc-300">
                         Lade deine Aufgaben...
                     </div>
                 )}
 
                 {!loading && openTasks.length === 0 && doneTasks.length === 0 && (
-                    <div className="py-4 text-center text-xs text-zinc-300">
+                    <div className="py-4 text-center text-sm text-zinc-300">
                         Du hast gerade keine Aufgaben 🎉
                     </div>
                 )}
@@ -493,35 +497,25 @@ export default function ChildDashboard({
                 {openTasks.map(task => renderTaskCard(task, false))}
 
                 {openTasks.length > 0 && doneTasks.length > 0 && (
-                    <div className="my-2 border-t border-zinc-700" />
+                    <div className="my-3 border-t border-zinc-700" />
                 )}
 
                 {doneTasks.map(task => renderTaskCard(task, true))}
             </div>
 
             {error && (
-                <div className="mt-3 rounded-xl bg-red-500/20 px-3 py-2 text-[10px] text-red-200">
+                <div className="mt-3 rounded-2xl bg-red-500/20 px-4 py-3 text-xs text-red-200">
                     {error}
                 </div>
             )}
 
             <button
                 type="button"
-                onClick={handleLeaveFamily}
-                disabled={leavingFamily}
-                className="mt-3 w-full rounded-xl bg-red-500 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
-            >
-                Familie verlassen
-            </button>
-
-            <button
-                type="button"
                 onClick={onLogout}
-                className="mt-2 w-full rounded-xl bg-zinc-900 px-4 py-2 text-xs font-semibold text-white"
+                className="mt-3 flex h-12 w-full items-center justify-center rounded-2xl bg-zinc-900 text-base font-semibold text-white"
             >
                 Logout
             </button>
-
         </div>
     )
 }
